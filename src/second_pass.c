@@ -183,6 +183,8 @@ AssembledProgram* finalize_assembly(ExpandedInput* expanded, SymbolTable* symbol
   DynamicArray bss = {0};
   DynamicArray rodata = {0};
 
+  DynamicArray text_lines = {0};
+
   DynamicArray* current_segment = &text;
 
   if (!dynamic_array_init(&text, sizeof(uint8_t), 256))
@@ -192,6 +194,9 @@ AssembledProgram* finalize_assembly(ExpandedInput* expanded, SymbolTable* symbol
   if (!dynamic_array_init(&bss, sizeof(uint8_t), 256))
     goto fail;
   if (!dynamic_array_init(&rodata, sizeof(uint8_t), 256))
+    goto fail;
+
+  if (!dynamic_array_init(&text_lines, sizeof(uint32_t), 256))
     goto fail;
 
   for (size_t i = 0; i < expanded->count; i++) {
@@ -205,12 +210,15 @@ AssembledProgram* finalize_assembly(ExpandedInput* expanded, SymbolTable* symbol
         LOG_ERROR_LINE("Instruction encountered outside .text", line->line);
         goto fail;
       }
+
       uint32_t bin;
       if (!instruction_to_binary(line, current_segment->count, symbol_table, &bin)) {
         LOG_ERROR_LINE("Failed to convert instruction to binary", line->line);
         goto fail;
       }
       if (!push_word(current_segment, bin))
+        goto fail;
+      if (!dynamic_array_push(&text_lines, &line->line))
         goto fail;
       break;
     case LINE_DIRECTIVE:
@@ -250,6 +258,8 @@ AssembledProgram* finalize_assembly(ExpandedInput* expanded, SymbolTable* symbol
 
   result->symbol_table = symbol_table;
   result->entry_offset = get_entry_point(symbol_table);
+  result->text_lines = (uint32_t*)text_lines.data;
+  result->text_lines_size = text_lines.count;
   result->text.data = (uint8_t*)text.data;
   result->text.size = text.count;
   result->data.data = (uint8_t*)data.data;
@@ -265,6 +275,7 @@ fail:
   dynamic_array_free(&data);
   dynamic_array_free(&bss);
   dynamic_array_free(&rodata);
+  dynamic_array_free(&text_lines);
   free(result);
   return NULL;
 }
@@ -273,6 +284,7 @@ void free_assembled_program(AssembledProgram* program) {
   if (!program)
     return;
 
+  free(program->text_lines);
   free(program->text.data);
   free(program->data.data);
   free(program->bss.data);

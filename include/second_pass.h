@@ -21,6 +21,9 @@ typedef struct {
   MemorySegment text;
   uint32_t entry_offset;
 
+  uint32_t* text_lines; // lines[vaddr / 4] == line num
+  size_t text_lines_size;
+
   MemorySegment data;
   MemorySegment bss;
   MemorySegment rodata;

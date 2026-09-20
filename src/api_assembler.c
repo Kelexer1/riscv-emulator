@@ -66,3 +66,31 @@ fail:
   free_assembled_program(prog);
   return NULL;
 }
+
+int addr_to_line(const AssembledProgram* prog, uint32_t text_offset, uint32_t* out_line) {
+  if (!prog || !out_line || text_offset >= prog->text.size)
+    return 0;
+  *out_line = prog->text_lines[text_offset / 4];
+  return 1;
+}
+
+int line_to_addr(const AssembledProgram* prog, uint32_t line, uint32_t* out_offset) {
+  if (!prog || !out_offset)
+    return 0;
+  size_t n = prog->text.size / 4;
+  size_t best = n;
+  uint32_t best_line = UINT32_MAX;
+  for (size_t i = 0; i < n; i++) {
+    uint32_t l = prog->text_lines[i];
+    if (l >= line && l < best_line) {
+      best_line = l;
+      best = i;
+      if (l == line)
+        break;
+    }
+  }
+  if (best == n)
+    return 0;
+  *out_offset = (uint32_t)(best * 4);
+  return 1;
+}
