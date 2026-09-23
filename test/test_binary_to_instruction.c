@@ -1,60 +1,56 @@
 #include "../include/binary_to_instruction.h"
-#include "../include/instruction_to_binary.h"
 #include "unity/unity.h"
 #include <string.h>
 
 void setUp(void) {}
 void tearDown(void) {}
 
-static Operand make_reg(int reg) {
-  Operand op = {0};
-  op.type = OPERAND_REGISTER;
-  op.reg.reg = reg;
-  return op;
+/* ---------------------------------------------------------------------
+ * Raw RISC-V encoders, standing in for the assembler's instruction_to_binary
+ * (which now lives in the assembler repo and is no longer available here).
+ * Encodings follow the standard RV32I bit layouts.
+ * ------------------------------------------------------------------- */
+
+static uint32_t encode_r(uint32_t funct7, uint32_t rs2, uint32_t rs1, uint32_t funct3, uint32_t rd, uint32_t opcode) {
+  return (funct7 << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
 }
 
-static Operand make_imm(int imm) {
-  Operand op = {0};
-  op.type = OPERAND_IMMEDIATE_LITERAL;
-  op.imm.imm = imm;
-  return op;
+static uint32_t encode_i(int32_t imm, uint32_t rs1, uint32_t funct3, uint32_t rd, uint32_t opcode) {
+  return ((uint32_t)(imm & 0xFFF) << 20) | (rs1 << 15) | (funct3 << 12) | (rd << 7) | opcode;
 }
 
-static Operand make_symbol(const char* s) {
-  Operand op = {0};
-  op.type = OPERAND_SYMBOL;
-  op.label.label = (char*)s;
-  op.label.len = strlen(s);
-  return op;
+static uint32_t encode_s(int32_t imm, uint32_t rs2, uint32_t rs1, uint32_t funct3, uint32_t opcode) {
+  uint32_t u = (uint32_t)imm;
+  return (((u >> 5) & 0x7F) << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) | ((u & 0x1F) << 7) | opcode;
 }
 
-static Operand make_mem(int offset, int base_reg) {
-  Operand op = {0};
-  op.type = OPERAND_MEMORY;
-  op.mem.offset = offset;
-  op.mem.base_reg = base_reg;
-  return op;
+static uint32_t encode_b(int32_t imm, uint32_t rs2, uint32_t rs1, uint32_t funct3, uint32_t opcode) {
+  uint32_t u = (uint32_t)imm;
+  return (((u >> 12) & 0x1) << 31) | (((u >> 5) & 0x3F) << 25) | (rs2 << 20) | (rs1 << 15) | (funct3 << 12) |
+         (((u >> 1) & 0xF) << 8) | (((u >> 11) & 0x1) << 7) | opcode;
 }
 
-static Operand zero_operand(void) {
-  Operand op = {0};
-  return op;
+static uint32_t encode_u(uint32_t imm20, uint32_t rd, uint32_t opcode) { return (imm20 << 12) | (rd << 7) | opcode; }
+
+static uint32_t encode_j(int32_t imm, uint32_t rd, uint32_t opcode) {
+  uint32_t u = (uint32_t)imm;
+  return (((u >> 20) & 0x1) << 31) | (((u >> 1) & 0x3FF) << 21) | (((u >> 11) & 0x1) << 20) |
+         (((u >> 12) & 0xFF) << 12) | (rd << 7) | opcode;
 }
 
-static ParsedLine make_line(Opcode op, int operand_count, Operand a, Operand b, Operand c) {
-  ParsedLine line = {0};
-  line.type = LINE_INSTRUCTION;
-  line.instruction.type = INSTRUCTION_REAL;
-  line.instruction.op = op;
-  line.instruction.operand_count = operand_count;
-  if (operand_count > 0)
-    line.instruction.operands[0] = a;
-  if (operand_count > 1)
-    line.instruction.operands[1] = b;
-  if (operand_count > 2)
-    line.instruction.operands[2] = c;
-  return line;
-}
+#define OPCODE_R 0x33u
+#define OPCODE_I_ARITH 0x13u
+#define OPCODE_LOAD 0x03u
+#define OPCODE_STORE 0x23u
+#define OPCODE_BRANCH 0x63u
+#define OPCODE_LUI 0x37u
+#define OPCODE_JAL 0x6Fu
+#define OPCODE_SYSTEM 0x73u
+
+#define FUNCT7_ADD 0x00u
+#define FUNCT7_SUB 0x20u
+#define FUNCT7_SRL 0x00u
+#define FUNCT7_SRA 0x20u
 
 /* ---------------------------------------------------------------------
  * binary_to_instruction
@@ -63,9 +59,7 @@ static ParsedLine make_line(Opcode op, int operand_count, Operand a, Operand b, 
 void test_binary_to_instruction_null_out_fails(void) { TEST_ASSERT_EQUAL_INT(0, binary_to_instruction(0x33, NULL)); }
 
 void test_binary_to_instruction_add_roundtrip(void) {
-  ParsedLine line = make_line(OP_ADD, 3, make_reg(1), make_reg(2), make_reg(3));
-  uint32_t bin;
-  instruction_to_binary(&line, 0, NULL, &bin);
+  uint32_t bin = encode_r(FUNCT7_ADD, 3, 2, 0x0, 1, OPCODE_R);
 
   DecodedInstruction out;
   TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(bin, &out));
@@ -76,9 +70,7 @@ void test_binary_to_instruction_add_roundtrip(void) {
 }
 
 void test_binary_to_instruction_sub_distinguished_by_funct7(void) {
-  ParsedLine line = make_line(OP_SUB, 3, make_reg(1), make_reg(2), make_reg(3));
-  uint32_t bin;
-  instruction_to_binary(&line, 0, NULL, &bin);
+  uint32_t bin = encode_r(FUNCT7_SUB, 3, 2, 0x0, 1, OPCODE_R);
 
   DecodedInstruction out;
   TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(bin, &out));
@@ -86,9 +78,7 @@ void test_binary_to_instruction_sub_distinguished_by_funct7(void) {
 }
 
 void test_binary_to_instruction_addi_positive_imm(void) {
-  ParsedLine line = make_line(OP_ADDI, 3, make_reg(5), make_reg(6), make_imm(100));
-  uint32_t bin;
-  instruction_to_binary(&line, 0, NULL, &bin);
+  uint32_t bin = encode_i(100, 6, 0x0, 5, OPCODE_I_ARITH);
 
   DecodedInstruction out;
   TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(bin, &out));
@@ -99,9 +89,7 @@ void test_binary_to_instruction_addi_positive_imm(void) {
 }
 
 void test_binary_to_instruction_addi_negative_imm_sign_extends(void) {
-  ParsedLine line = make_line(OP_ADDI, 3, make_reg(1), make_reg(2), make_imm(-50));
-  uint32_t bin;
-  instruction_to_binary(&line, 0, NULL, &bin);
+  uint32_t bin = encode_i(-50, 2, 0x0, 1, OPCODE_I_ARITH);
 
   DecodedInstruction out;
   TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(bin, &out));
@@ -109,11 +97,8 @@ void test_binary_to_instruction_addi_negative_imm_sign_extends(void) {
 }
 
 void test_binary_to_instruction_srli_vs_srai(void) {
-  ParsedLine srli = make_line(OP_SRLI, 3, make_reg(1), make_reg(2), make_imm(4));
-  ParsedLine srai = make_line(OP_SRAI, 3, make_reg(1), make_reg(2), make_imm(4));
-  uint32_t bin_srli, bin_srai;
-  instruction_to_binary(&srli, 0, NULL, &bin_srli);
-  instruction_to_binary(&srai, 0, NULL, &bin_srai);
+  uint32_t bin_srli = encode_r(FUNCT7_SRL, 4, 2, 0x5, 1, OPCODE_I_ARITH);
+  uint32_t bin_srai = encode_r(FUNCT7_SRA, 4, 2, 0x5, 1, OPCODE_I_ARITH);
 
   DecodedInstruction out_srli, out_srai;
   TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(bin_srli, &out_srli));
@@ -123,9 +108,7 @@ void test_binary_to_instruction_srli_vs_srai(void) {
 }
 
 void test_binary_to_instruction_lw_roundtrip(void) {
-  ParsedLine line = make_line(OP_LW, 2, make_reg(5), make_mem(16, 2), zero_operand());
-  uint32_t bin;
-  instruction_to_binary(&line, 0, NULL, &bin);
+  uint32_t bin = encode_i(16, 2, 0x2, 5, OPCODE_LOAD);
 
   DecodedInstruction out;
   TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(bin, &out));
@@ -136,9 +119,7 @@ void test_binary_to_instruction_lw_roundtrip(void) {
 }
 
 void test_binary_to_instruction_sw_roundtrip(void) {
-  ParsedLine line = make_line(OP_SW, 2, make_reg(5), make_mem(100, 2), zero_operand());
-  uint32_t bin;
-  instruction_to_binary(&line, 0, NULL, &bin);
+  uint32_t bin = encode_s(100, 5, 2, 0x2, OPCODE_STORE);
 
   DecodedInstruction out;
   TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(bin, &out));
@@ -149,16 +130,7 @@ void test_binary_to_instruction_sw_roundtrip(void) {
 }
 
 void test_binary_to_instruction_beq_roundtrip(void) {
-  Symbol sym = {0};
-  sym.name = "target";
-  sym.len = 6;
-  sym.value = 100;
-  SymbolTable table = {0};
-  table.head = &sym;
-
-  ParsedLine line = make_line(OP_BEQ, 3, make_reg(1), make_reg(2), make_symbol("target"));
-  uint32_t bin;
-  TEST_ASSERT_EQUAL_INT(1, instruction_to_binary(&line, 0, &table, &bin));
+  uint32_t bin = encode_b(100, 2, 1, 0x0, OPCODE_BRANCH);
 
   DecodedInstruction out;
   TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(bin, &out));
@@ -169,9 +141,7 @@ void test_binary_to_instruction_beq_roundtrip(void) {
 }
 
 void test_binary_to_instruction_lui_roundtrip(void) {
-  ParsedLine line = make_line(OP_LUI, 2, make_reg(5), make_imm(0x12345), zero_operand());
-  uint32_t bin;
-  instruction_to_binary(&line, 0, NULL, &bin);
+  uint32_t bin = encode_u(0x12345, 5, OPCODE_LUI);
 
   DecodedInstruction out;
   TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(bin, &out));
@@ -181,16 +151,7 @@ void test_binary_to_instruction_lui_roundtrip(void) {
 }
 
 void test_binary_to_instruction_jal_roundtrip(void) {
-  Symbol sym = {0};
-  sym.name = "func";
-  sym.len = 4;
-  sym.value = 1000;
-  SymbolTable table = {0};
-  table.head = &sym;
-
-  ParsedLine line = make_line(OP_JAL, 2, make_reg(1), make_symbol("func"), zero_operand());
-  uint32_t bin;
-  TEST_ASSERT_EQUAL_INT(1, instruction_to_binary(&line, 0, &table, &bin));
+  uint32_t bin = encode_j(1000, 1, OPCODE_JAL);
 
   DecodedInstruction out;
   TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(bin, &out));
@@ -200,11 +161,8 @@ void test_binary_to_instruction_jal_roundtrip(void) {
 }
 
 void test_binary_to_instruction_ecall_ebreak(void) {
-  ParsedLine ecall_line = make_line(OP_ECALL, 0, zero_operand(), zero_operand(), zero_operand());
-  ParsedLine ebreak_line = make_line(OP_EBREAK, 0, zero_operand(), zero_operand(), zero_operand());
-  uint32_t bin_ecall, bin_ebreak;
-  instruction_to_binary(&ecall_line, 0, NULL, &bin_ecall);
-  instruction_to_binary(&ebreak_line, 0, NULL, &bin_ebreak);
+  uint32_t bin_ecall = encode_i(0, 0, 0x0, 0, OPCODE_SYSTEM);
+  uint32_t bin_ebreak = encode_i(1, 0, 0x0, 0, OPCODE_SYSTEM);
 
   DecodedInstruction out_ecall, out_ebreak;
   TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(bin_ecall, &out_ecall));

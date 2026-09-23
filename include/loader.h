@@ -1,8 +1,10 @@
 #ifndef LOADER_H
 #define LOADER_H
 
+#include "elf32_load.h"
 #include "memory.h"
-#include "second_pass.h"
+
+#define MAX_ELF_FILE_SIZE (256u * 1024u * 1024u)
 
 /**
  * @brief Encodes the run status of a loaded program
@@ -23,16 +25,20 @@ typedef struct {
 } ProgramState;
 
 /**
- * @brief Loads an assembled program into a fresh address space, laying out .text, .rodata,
- * .data, .bss, and a guarded stack region
+ * @brief Loads a parsed ELF32 image into a fresh virtual address space and sets up the stack, heap break, and pc
  *
- * @param prog The assembled program to load
- * @return ProgramState* The initialized program state, or NULL if an error occurred
- *
- * @note An unmapped guard page is left directly below the stack, so stack overflow faults
- * instead of silently corrupting adjacent memory
+ * @param img The parsed ELF image; its segment data is copied, so the backing buffer may be freed afterward
+ * @return ProgramState* The loaded program state, or NULL if loading failed
  */
-ProgramState* load_binary(AssembledProgram* prog);
+ProgramState* load_binary(const Elf32Image* img);
+
+/**
+ * @brief Reads, parses, and loads an ELF32 file from disk
+ *
+ * @param path The path of the ELF file
+ * @return ProgramState* The loaded program state, or NULL if the file could not be read, parsed, or loaded
+ */
+ProgramState* load_elf_file(const char* path);
 
 /**
  * @brief Frees a loaded program's page table and the state struct itself

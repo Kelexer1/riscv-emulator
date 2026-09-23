@@ -1,9 +1,11 @@
 #ifndef INSTRUCTION_TO_BINARY_H
 #define INSTRUCTION_TO_BINARY_H
 
-#include "first_pass.h"
-#include "parser.h"
+#include "riscv.h"
+
 #include <stdint.h>
+
+#define MAX_OPERANDS 4
 
 /**
  * @brief A struct encoding various binary field values for different Opcodes
@@ -117,17 +119,6 @@ typedef struct {
   int operands[MAX_OPERANDS];
   size_t operand_count;
 } AssembledInstruction;
-
-/**
- * @brief Converts an instruction parsed line into a 32-bit binary sequence
- *
- * @param line The parsed line, where line->type == LINE_INSTRUCTION
- * @param current_addr The current address
- * @param symbol_table The symbol table
- * @param out Where to fill the binary
- * @return int 1 if success, 0 if the operation failed
- */
-int instruction_to_binary(ParsedLine* line, uint32_t current_addr, SymbolTable* symbol_table, uint32_t* out);
 
 /**
  * @brief Returns the instruction format for a given opcode

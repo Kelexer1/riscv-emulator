@@ -2,9 +2,10 @@
 #define API_DEBUGGER_H
 
 #include "api_emulator.h"
-#include "first_pass.h"
+#include "elf32_load.h"
+#include "symbol_table.h"
+
 #include "loader.h"
-#include "second_pass.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -54,7 +55,7 @@ typedef struct {
  */
 typedef struct {
   ProgramState* prog;
-  AssembledProgram* prog_source;
+  const Elf32Image* image;
   SymbolTable* symbol_table;
   Breakpoint breakpoints[MAX_BREAKPOINTS];
   Watchpoint watchpoints[MAX_WATCHPOINTS];
@@ -77,10 +78,10 @@ typedef enum : uint8_t {
  *
  * @param dbg The debugger struct to be initalized
  * @param prog The state of the program
- * @param prog_source The assembled source code of the program
+ * @param image The program ELF32 image
  * @param symbol_table The symbol table, for tasks such as setting watchpoints and disassembly
  */
-void debugger_init(DebuggerState* dbg, ProgramState* prog, AssembledProgram* prog_source, SymbolTable* symbol_table);
+void debugger_init(DebuggerState* dbg, ProgramState* prog, const Elf32Image* image, SymbolTable* symbol_table);
 
 /**
  * @brief Reloads the assembled binary into the address space of the debuggers program, freeing the old binary

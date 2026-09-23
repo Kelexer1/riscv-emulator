@@ -5,20 +5,20 @@
 #include <stdlib.h>
 #include <string.h>
 
-void debugger_init(DebuggerState* dbg, ProgramState* prog, AssembledProgram* prog_source, SymbolTable* symbol_table) {
-  if (!dbg || !prog || !prog_source)
+void debugger_init(DebuggerState* dbg, ProgramState* prog, const Elf32Image* image, SymbolTable* symbol_table) {
+  if (!dbg || !prog || !image)
     return;
   memset(dbg, 0, sizeof(DebuggerState));
   dbg->prog = prog;
-  dbg->prog_source = prog_source;
+  dbg->image = image;
   dbg->symbol_table = symbol_table;
 }
 
 int debugger_reset(DebuggerState* dbg) {
-  if (!dbg)
+  if (!dbg || !dbg->image)
     return 0;
 
-  ProgramState* fresh = load_binary(dbg->prog_source);
+  ProgramState* fresh = load_binary(dbg->image);
   if (!fresh)
     return 0;
 

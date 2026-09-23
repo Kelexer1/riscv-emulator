@@ -8,78 +8,102 @@
 void setUp(void) {}
 void tearDown(void) {}
 
-static AssembledProgram make_program(uint8_t* text, size_t text_size, uint8_t* rodata, size_t rodata_size,
-                                     uint8_t* data, size_t data_size, uint8_t* bss, size_t bss_size,
-                                     uint32_t entry_offset) {
-  AssembledProgram prog = {0};
-  prog.text.data = text;
-  prog.text.size = text_size;
-  prog.rodata.data = rodata;
-  prog.rodata.size = rodata_size;
-  prog.data.data = data;
-  prog.data.size = data_size;
-  prog.bss.data = bss;
-  prog.bss.size = bss_size;
-  prog.entry_offset = entry_offset;
-  return prog;
+typedef struct {
+  uint32_t vaddr;
+  uint32_t filesz;
+  uint32_t memsz;
+  uint32_t flags;
+  const uint8_t* data;
+} SegSpec;
+
+static Elf32Image make_image(uint32_t entry, const SegSpec* specs, size_t n) {
+  Elf32Image img = {0};
+  img.entry = entry;
+  img.nsegments = n;
+  for (size_t i = 0; i < n; i++) {
+    img.segments[i].vaddr = specs[i].vaddr;
+    img.segments[i].filesz = specs[i].filesz;
+    img.segments[i].memsz = specs[i].memsz;
+    img.segments[i].flags = specs[i].flags;
+    img.segments[i].data = specs[i].data;
+  }
+  return img;
 }
+
+/* rodata/data/bss are placed right after .text, page-rounded, matching the layout the assembler's
+ * elf_emit.c lays out; individual tests only need one extra segment at a time */
+static uint32_t after_text(uint32_t text_size) { return (text_size + PAGE_SIZE - 1u) & ~(PAGE_SIZE - 1u); }
 
 /* ---------------------------------------------------------------------
- * load_mem_segment
+ * zero_fill / segments_share_page / entry_is_executable
  * ------------------------------------------------------------------- */
 
-void test_load_mem_segment_null_args_fail(void) {
-  MemorySegment seg = {0};
+void test_zero_fill_zero_len_is_noop_success(void) {
   PageTable pt = {0};
-  TEST_ASSERT_EQUAL_INT(0, load_mem_segment(NULL, 0, &seg, MEMORY_READ));
-  TEST_ASSERT_EQUAL_INT(0, load_mem_segment(&pt, 0, NULL, MEMORY_READ));
+  TEST_ASSERT_EQUAL_INT(1, zero_fill(&pt, 0x1000, 0, MEMORY_READ | MEMORY_WRITE));
 }
 
-void test_load_mem_segment_zero_size_is_noop_success(void) {
-  MemorySegment seg = {0};
-  seg.size = 0;
+void test_zero_fill_writes_zeros_across_page_boundary(void) {
   PageTable pt = {0};
+  TEST_ASSERT_EQUAL_INT(1, zero_fill(&pt, PAGE_SIZE - 2, 4, MEMORY_READ | MEMORY_WRITE));
 
-  TEST_ASSERT_EQUAL_INT(1, load_mem_segment(&pt, 0, &seg, MEMORY_READ));
   uint8_t val;
-  TEST_ASSERT_EQUAL(ACCESS_INVALID_ADDRESS, mem_read_u8(&pt, 0, &val));
+  TEST_ASSERT_EQUAL(ACCESS_OK, mem_read_u8(&pt, PAGE_SIZE - 2, &val));
+  TEST_ASSERT_EQUAL_UINT8(0, val);
+  TEST_ASSERT_EQUAL(ACCESS_OK, mem_read_u8(&pt, PAGE_SIZE + 1, &val));
+  TEST_ASSERT_EQUAL_UINT8(0, val);
+
+  free_page_table(&pt);
 }
 
-void test_load_mem_segment_writes_data(void) {
-  uint8_t data[4] = {0xAA, 0xBB, 0xCC, 0xDD};
-  MemorySegment seg = {0};
-  seg.data = data;
-  seg.size = 4;
-  PageTable pt = {0};
+void test_segments_share_page_detects_overlap(void) {
+  SegSpec specs[] = {
+      {0, 4, 4, PF_R | PF_X, NULL},
+      {PAGE_SIZE - 4, 4, 4, PF_R | PF_W, NULL},
+  };
+  Elf32Image img = make_image(0, specs, 2);
+  TEST_ASSERT_EQUAL_INT(1, segments_share_page(&img));
+}
 
-  TEST_ASSERT_EQUAL_INT(1, load_mem_segment(&pt, 0x1000, &seg, MEMORY_READ | MEMORY_WRITE));
+void test_segments_share_page_false_when_page_aligned(void) {
+  SegSpec specs[] = {
+      {0, 4, 4, PF_R | PF_X, NULL},
+      {PAGE_SIZE, 4, 4, PF_R | PF_W, NULL},
+  };
+  Elf32Image img = make_image(0, specs, 2);
+  TEST_ASSERT_EQUAL_INT(0, segments_share_page(&img));
+}
 
-  uint8_t val;
-  TEST_ASSERT_EQUAL(ACCESS_OK, mem_read_u8(&pt, 0x1000, &val));
-  TEST_ASSERT_EQUAL_UINT8(0xAA, val);
-  TEST_ASSERT_EQUAL(ACCESS_OK, mem_read_u8(&pt, 0x1003, &val));
-  TEST_ASSERT_EQUAL_UINT8(0xDD, val);
+void test_entry_is_executable_true_inside_x_segment(void) {
+  SegSpec specs[] = {{0, 8, 8, PF_R | PF_X, NULL}};
+  Elf32Image img = make_image(4, specs, 1);
+  TEST_ASSERT_EQUAL_INT(1, entry_is_executable(&img));
+}
 
-  for (int i = 0; i < PT_SIZE; i++) {
-    if (pt.l2[i]) {
-      for (int j = 0; j < PT_SIZE; j++)
-        free(pt.l2[i]->pages[j]);
-      free(pt.l2[i]);
-    }
-  }
+void test_entry_is_executable_false_outside_any_segment(void) {
+  SegSpec specs[] = {{0, 8, 8, PF_R | PF_X, NULL}};
+  Elf32Image img = make_image(0x1000, specs, 1);
+  TEST_ASSERT_EQUAL_INT(0, entry_is_executable(&img));
+}
+
+void test_entry_is_executable_false_in_non_x_segment(void) {
+  SegSpec specs[] = {{0, 8, 8, PF_R | PF_W, NULL}};
+  Elf32Image img = make_image(0, specs, 1);
+  TEST_ASSERT_EQUAL_INT(0, entry_is_executable(&img));
 }
 
 /* ---------------------------------------------------------------------
  * load_binary / free_loaded_binary
  * ------------------------------------------------------------------- */
 
-void test_load_binary_null_prog_returns_null(void) { TEST_ASSERT_NULL(load_binary(NULL)); }
+void test_load_binary_null_img_returns_null(void) { TEST_ASSERT_NULL(load_binary(NULL)); }
 
 void test_load_binary_sets_pc_and_stack_pointer(void) {
   uint8_t text[4] = {0x13, 0x00, 0x00, 0x00}; /* addi x0,x0,0 (nop) */
-  AssembledProgram prog = make_program(text, 4, NULL, 0, NULL, 0, NULL, 0, 0);
+  SegSpec specs[] = {{0, 4, 4, PF_R | PF_X, text}};
+  Elf32Image img = make_image(0, specs, 1);
 
-  ProgramState* state = load_binary(&prog);
+  ProgramState* state = load_binary(&img);
 
   TEST_ASSERT_NOT_NULL(state);
   TEST_ASSERT_EQUAL_UINT32(0, state->pc);
@@ -90,9 +114,10 @@ void test_load_binary_sets_pc_and_stack_pointer(void) {
 
 void test_load_binary_text_is_readable_but_not_writable(void) {
   uint8_t text[4] = {0x13, 0x00, 0x00, 0x00};
-  AssembledProgram prog = make_program(text, 4, NULL, 0, NULL, 0, NULL, 0, 0);
+  SegSpec specs[] = {{0, 4, 4, PF_R | PF_X, text}};
+  Elf32Image img = make_image(0, specs, 1);
 
-  ProgramState* state = load_binary(&prog);
+  ProgramState* state = load_binary(&img);
   TEST_ASSERT_NOT_NULL(state);
 
   uint8_t val;
@@ -106,13 +131,16 @@ void test_load_binary_text_is_readable_but_not_writable(void) {
 void test_load_binary_data_is_readable_and_writable(void) {
   uint8_t text[4] = {0};
   uint8_t data[4] = {1, 2, 3, 4};
-  AssembledProgram prog = make_program(text, 4, NULL, 0, data, 4, NULL, 0, 0);
+  uint32_t data_base = after_text(4);
+  SegSpec specs[] = {
+      {0, 4, 4, PF_R | PF_X, text},
+      {data_base, 4, 4, PF_R | PF_W, data},
+  };
+  Elf32Image img = make_image(0, specs, 2);
 
-  ProgramState* state = load_binary(&prog);
+  ProgramState* state = load_binary(&img);
   TEST_ASSERT_NOT_NULL(state);
 
-  /* data segment is placed after .text, page-rounded */
-  uint32_t data_base = (4 + PAGE_SIZE - 1u) & ~(PAGE_SIZE - 1u);
   uint8_t val;
   TEST_ASSERT_EQUAL(ACCESS_OK, mem_read_u8(&state->pt, data_base, &val));
   TEST_ASSERT_EQUAL_UINT8(1, val);
@@ -124,12 +152,16 @@ void test_load_binary_data_is_readable_and_writable(void) {
 void test_load_binary_rodata_is_readable_but_not_writable(void) {
   uint8_t text[4] = {0};
   uint8_t rodata[4] = {9, 9, 9, 9};
-  AssembledProgram prog = make_program(text, 4, rodata, 4, NULL, 0, NULL, 0, 0);
+  uint32_t rodata_base = after_text(4);
+  SegSpec specs[] = {
+      {0, 4, 4, PF_R | PF_X, text},
+      {rodata_base, 4, 4, PF_R, rodata},
+  };
+  Elf32Image img = make_image(0, specs, 2);
 
-  ProgramState* state = load_binary(&prog);
+  ProgramState* state = load_binary(&img);
   TEST_ASSERT_NOT_NULL(state);
 
-  uint32_t rodata_base = (4 + PAGE_SIZE - 1u) & ~(PAGE_SIZE - 1u);
   uint8_t val;
   TEST_ASSERT_EQUAL(ACCESS_OK, mem_read_u8(&state->pt, rodata_base, &val));
   TEST_ASSERT_EQUAL_UINT8(9, val);
@@ -138,11 +170,33 @@ void test_load_binary_rodata_is_readable_but_not_writable(void) {
   free_loaded_binary(state);
 }
 
+void test_load_binary_bss_is_zero_filled_and_writable(void) {
+  uint8_t text[4] = {0};
+  uint32_t bss_base = after_text(4);
+  /* NOBITS segment: filesz 0, memsz 10, no backing data */
+  SegSpec specs[] = {
+      {0, 4, 4, PF_R | PF_X, text},
+      {bss_base, 0, 10, PF_R | PF_W, NULL},
+  };
+  Elf32Image img = make_image(0, specs, 2);
+
+  ProgramState* state = load_binary(&img);
+  TEST_ASSERT_NOT_NULL(state);
+
+  uint8_t val;
+  TEST_ASSERT_EQUAL(ACCESS_OK, mem_read_u8(&state->pt, bss_base, &val));
+  TEST_ASSERT_EQUAL_UINT8(0, val);
+  TEST_ASSERT_EQUAL(ACCESS_OK, mem_write_u8(&state->pt, bss_base, 7, MEMORY_WRITE));
+
+  free_loaded_binary(state);
+}
+
 void test_load_binary_stack_guard_page_is_unmapped(void) {
   uint8_t text[4] = {0};
-  AssembledProgram prog = make_program(text, 4, NULL, 0, NULL, 0, NULL, 0, 0);
+  SegSpec specs[] = {{0, 4, 4, PF_R | PF_X, text}};
+  Elf32Image img = make_image(0, specs, 1);
 
-  ProgramState* state = load_binary(&prog);
+  ProgramState* state = load_binary(&img);
   TEST_ASSERT_NOT_NULL(state);
 
   const uint32_t stack_top = 0x80000000u;
@@ -158,9 +212,10 @@ void test_load_binary_stack_guard_page_is_unmapped(void) {
 
 void test_load_binary_stack_usable_region_is_mapped(void) {
   uint8_t text[4] = {0};
-  AssembledProgram prog = make_program(text, 4, NULL, 0, NULL, 0, NULL, 0, 0);
+  SegSpec specs[] = {{0, 4, 4, PF_R | PF_X, text}};
+  Elf32Image img = make_image(0, specs, 1);
 
-  ProgramState* state = load_binary(&prog);
+  ProgramState* state = load_binary(&img);
   TEST_ASSERT_NOT_NULL(state);
 
   uint8_t val;
@@ -172,14 +227,15 @@ void test_load_binary_stack_usable_region_is_mapped(void) {
 
 void test_load_binary_sets_stack_limit(void) {
   uint8_t text[4] = {0};
-  AssembledProgram prog = make_program(text, 4, NULL, 0, NULL, 0, NULL, 0, 0);
+  SegSpec specs[] = {{0, 4, 4, PF_R | PF_X, text}};
+  Elf32Image img = make_image(0, specs, 1);
 
   const uint32_t stack_top = 0x80000000u;
   const uint32_t stack_size = 2u * 1024u * 1024u;
   const uint32_t stack_guard_bytes = PAGE_SIZE;
   const uint32_t expected_stack_base = stack_top - stack_guard_bytes - stack_size;
 
-  ProgramState* state = load_binary(&prog);
+  ProgramState* state = load_binary(&img);
 
   TEST_ASSERT_NOT_NULL(state);
   TEST_ASSERT_EQUAL_UINT32(expected_stack_base, state->stack_limit);
@@ -187,18 +243,42 @@ void test_load_binary_sets_stack_limit(void) {
   free_loaded_binary(state);
 }
 
-void test_load_binary_heap_break_is_page_aligned_after_bss(void) {
+void test_load_binary_heap_break_is_page_aligned_after_last_segment(void) {
   uint8_t text[4] = {0};
-  uint8_t bss_dummy[10] = {0}; /* only size matters; .bss content is zero anyway */
-  AssembledProgram prog = make_program(text, 4, NULL, 0, NULL, 0, bss_dummy, 10, 0);
+  uint32_t bss_base = after_text(4);
+  SegSpec specs[] = {
+      {0, 4, 4, PF_R | PF_X, text},
+      {bss_base, 0, 10, PF_R | PF_W, NULL},
+  };
+  Elf32Image img = make_image(0, specs, 2);
 
-  ProgramState* state = load_binary(&prog);
+  ProgramState* state = load_binary(&img);
 
   TEST_ASSERT_NOT_NULL(state);
   TEST_ASSERT_EQUAL_UINT32(0, state->heap_break % PAGE_SIZE);
-  TEST_ASSERT_TRUE(state->heap_break > 0);
+  TEST_ASSERT_TRUE(state->heap_break > bss_base);
 
   free_loaded_binary(state);
+}
+
+void test_load_binary_rejects_segments_sharing_a_page(void) {
+  uint8_t text[4] = {0};
+  uint8_t data[4] = {0};
+  SegSpec specs[] = {
+      {0, 4, 4, PF_R | PF_X, text},
+      {8, 4, 4, PF_R | PF_W, data}, /* same page as .text */
+  };
+  Elf32Image img = make_image(0, specs, 2);
+
+  TEST_ASSERT_NULL(load_binary(&img));
+}
+
+void test_load_binary_rejects_entry_outside_executable_segment(void) {
+  uint8_t text[4] = {0};
+  SegSpec specs[] = {{0, 4, 4, PF_R | PF_X, text}};
+  Elf32Image img = make_image(0x2000, specs, 1);
+
+  TEST_ASSERT_NULL(load_binary(&img));
 }
 
 void test_free_loaded_binary_null_does_not_crash(void) {
@@ -213,19 +293,26 @@ void test_free_loaded_binary_null_does_not_crash(void) {
 int main(void) {
   UNITY_BEGIN();
 
-  RUN_TEST(test_load_mem_segment_null_args_fail);
-  RUN_TEST(test_load_mem_segment_zero_size_is_noop_success);
-  RUN_TEST(test_load_mem_segment_writes_data);
+  RUN_TEST(test_zero_fill_zero_len_is_noop_success);
+  RUN_TEST(test_zero_fill_writes_zeros_across_page_boundary);
+  RUN_TEST(test_segments_share_page_detects_overlap);
+  RUN_TEST(test_segments_share_page_false_when_page_aligned);
+  RUN_TEST(test_entry_is_executable_true_inside_x_segment);
+  RUN_TEST(test_entry_is_executable_false_outside_any_segment);
+  RUN_TEST(test_entry_is_executable_false_in_non_x_segment);
 
-  RUN_TEST(test_load_binary_null_prog_returns_null);
+  RUN_TEST(test_load_binary_null_img_returns_null);
   RUN_TEST(test_load_binary_sets_pc_and_stack_pointer);
   RUN_TEST(test_load_binary_text_is_readable_but_not_writable);
   RUN_TEST(test_load_binary_data_is_readable_and_writable);
   RUN_TEST(test_load_binary_rodata_is_readable_but_not_writable);
+  RUN_TEST(test_load_binary_bss_is_zero_filled_and_writable);
   RUN_TEST(test_load_binary_stack_guard_page_is_unmapped);
   RUN_TEST(test_load_binary_stack_usable_region_is_mapped);
   RUN_TEST(test_load_binary_sets_stack_limit);
-  RUN_TEST(test_load_binary_heap_break_is_page_aligned_after_bss);
+  RUN_TEST(test_load_binary_heap_break_is_page_aligned_after_last_segment);
+  RUN_TEST(test_load_binary_rejects_segments_sharing_a_page);
+  RUN_TEST(test_load_binary_rejects_entry_outside_executable_segment);
   RUN_TEST(test_free_loaded_binary_null_does_not_crash);
 
   return UNITY_END();

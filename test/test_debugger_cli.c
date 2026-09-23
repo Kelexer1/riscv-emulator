@@ -1,5 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
+#include "../include/elf32.h"
 #include "../src/debugger_cli.c"
 #include "unity/unity.h"
 #include <stdlib.h>
@@ -143,18 +144,18 @@ void test_tokenize_command_respects_max_tokens(void) {
 void test_dispatch_null_args_return_zero(void) {
   char line[] = "step";
   TEST_ASSERT_EQUAL_INT(0, dispatch(NULL, line));
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   TEST_ASSERT_EQUAL_INT(0, dispatch(&dbg, NULL));
 }
 
 void test_dispatch_empty_line_returns_zero(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   char line[] = "   ";
   TEST_ASSERT_EQUAL_INT(0, dispatch(&dbg, line));
 }
 
 void test_dispatch_unknown_command(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   char line[] = "frobnicate";
 
   int result = dispatch(&dbg, line);
@@ -167,7 +168,7 @@ void test_dispatch_recognizes_aliases(void) {
   write_word_at(0x1000, 0x13); /* addi x0,x0,0 -- valid nop */
   prog.pc = 0x1000;
   prog.status = CPU_RUNNING;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
 
   char line[] = "s";
   int result = dispatch(&dbg, line);
@@ -181,21 +182,21 @@ void test_dispatch_recognizes_aliases(void) {
 
 void test_parse_address_or_symbol_null_args_fail(void) {
   uint32_t out;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   TEST_ASSERT_EQUAL_INT(0, parse_address_or_symbol(NULL, "0x1000", &out));
   TEST_ASSERT_EQUAL_INT(0, parse_address_or_symbol(&dbg, NULL, &out));
   TEST_ASSERT_EQUAL_INT(0, parse_address_or_symbol(&dbg, "0x1000", NULL));
 }
 
 void test_parse_address_or_symbol_hex(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   uint32_t out;
   TEST_ASSERT_EQUAL_INT(1, parse_address_or_symbol(&dbg, "0x1000", &out));
   TEST_ASSERT_EQUAL_UINT32(0x1000, out);
 }
 
 void test_parse_address_or_symbol_decimal(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   uint32_t out;
   TEST_ASSERT_EQUAL_INT(1, parse_address_or_symbol(&dbg, "100", &out));
   TEST_ASSERT_EQUAL_UINT32(100, out);
@@ -208,7 +209,7 @@ void test_parse_address_or_symbol_resolves_symbol(void) {
   sym.value = 0x2000;
   SymbolTable table = {0};
   table.head = &sym;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, &table);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, &table);
 
   uint32_t out;
   TEST_ASSERT_EQUAL_INT(1, parse_address_or_symbol(&dbg, "loop", &out));
@@ -216,7 +217,7 @@ void test_parse_address_or_symbol_resolves_symbol(void) {
 }
 
 void test_parse_address_or_symbol_unresolvable_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   uint32_t out;
   TEST_ASSERT_EQUAL_INT(0, parse_address_or_symbol(&dbg, "not_a_symbol", &out));
 }
@@ -226,12 +227,12 @@ void test_parse_address_or_symbol_unresolvable_fails(void) {
  * ------------------------------------------------------------------- */
 
 void test_cmd_break_no_args_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   TEST_ASSERT_EQUAL_INT(CMD_ERROR, cmd_break(&dbg, 0, NULL));
 }
 
 void test_cmd_break_valid_address(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   char addr[] = "0x1000";
   char* argv[] = {addr};
 
@@ -240,7 +241,7 @@ void test_cmd_break_valid_address(void) {
 }
 
 void test_cmd_break_invalid_symbol_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   char addr[] = "not_a_symbol";
   char* argv[] = {addr};
 
@@ -248,7 +249,7 @@ void test_cmd_break_invalid_symbol_fails(void) {
 }
 
 void test_cmd_break_table_full_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   for (int i = 0; i < MAX_BREAKPOINTS; i++)
     debugger_add_breakpoint(&dbg, 0x1000 + i * 4);
 
@@ -262,12 +263,12 @@ void test_cmd_break_table_full_fails(void) {
  * ------------------------------------------------------------------- */
 
 void test_cmd_delete_no_args_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   TEST_ASSERT_EQUAL_INT(CMD_ERROR, cmd_delete(&dbg, 0, NULL));
 }
 
 void test_cmd_delete_nonexistent_should_report_not_found(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   char addr[] = "0x1000";
   char* argv[] = {addr};
 
@@ -275,7 +276,7 @@ void test_cmd_delete_nonexistent_should_report_not_found(void) {
 }
 
 void test_cmd_delete_breakpoint_at_index_zero_should_be_removed(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_breakpoint(&dbg, 0x1000); /* lands at index 0 in an empty table */
 
   char addr[] = "0x1000";
@@ -286,7 +287,7 @@ void test_cmd_delete_breakpoint_at_index_zero_should_be_removed(void) {
 }
 
 void test_cmd_delete_breakpoint_at_nonzero_index_works(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_breakpoint(&dbg, 0x1000); /* index 0 */
   debugger_add_breakpoint(&dbg, 0x2000); /* index 1 */
 
@@ -303,13 +304,13 @@ void test_cmd_delete_breakpoint_at_nonzero_index_works(void) {
  * ------------------------------------------------------------------- */
 
 void test_cmd_watch_no_args_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   TEST_ASSERT_EQUAL_INT(CMD_ERROR, cmd_watch(&dbg, 0, NULL));
 }
 
 void test_cmd_watch_mapped_address_succeeds(void) {
   mem_write_u32(&prog.pt, 0x1000, 5, MEMORY_READ | MEMORY_WRITE);
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   char addr[] = "0x1000";
   char* argv[] = {addr};
 
@@ -318,7 +319,7 @@ void test_cmd_watch_mapped_address_succeeds(void) {
 }
 
 void test_cmd_watch_table_full_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   for (int i = 0; i < MAX_WATCHPOINTS; i++)
     debugger_add_watchpoint(&dbg, 0x1000 + i * 4);
 
@@ -332,12 +333,12 @@ void test_cmd_watch_table_full_fails(void) {
  * ------------------------------------------------------------------- */
 
 void test_cmd_info_no_args_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   TEST_ASSERT_EQUAL_INT(CMD_ERROR, cmd_info(&dbg, 0, NULL));
 }
 
 void test_cmd_info_unknown_target_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   char target[] = "bogus";
   char* argv[] = {target};
   TEST_ASSERT_EQUAL_INT(CMD_ERROR, cmd_info(&dbg, 1, argv));
@@ -349,7 +350,7 @@ static char* info_target_argv[1];
 static void call_cmd_info(void) { cmd_info(info_target_dbg, 1, info_target_argv); }
 
 void test_cmd_info_breakpoints_lists_set_entries(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_breakpoint(&dbg, 0x1000);
   info_target_dbg = &dbg;
   static char target[] = "breakpoints";
@@ -362,7 +363,7 @@ void test_cmd_info_breakpoints_lists_set_entries(void) {
 
 void test_cmd_info_registers_prints_all(void) {
   prog.registers[5] = 42;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   info_target_dbg = &dbg;
   static char target[] = "registers";
   info_target_argv[0] = target;
@@ -377,14 +378,14 @@ void test_cmd_info_registers_prints_all(void) {
  * ------------------------------------------------------------------- */
 
 void test_cmd_examine_too_few_args_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   char addr[] = "0x1000";
   char* argv[] = {addr};
   TEST_ASSERT_EQUAL_INT(CMD_ERROR, cmd_examine(&dbg, 1, argv));
 }
 
 void test_cmd_examine_invalid_symbol_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   char addr[] = "not_a_symbol";
   char count[] = "1";
   char* argv[] = {addr, count};
@@ -398,7 +399,7 @@ static void call_cmd_examine(void) { cmd_examine(examine_target_dbg, 2, examine_
 
 void test_cmd_examine_reads_memory(void) {
   mem_write_u32(&prog.pt, 0x1000, 0xCAFEBABE, MEMORY_READ | MEMORY_WRITE);
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   examine_target_dbg = &dbg;
   static char addr[] = "0x1000";
   static char count[] = "1";
@@ -419,7 +420,7 @@ static void call_cmd_disas(void) { cmd_disas(disas_target_dbg, disas_target_argc
 void test_cmd_disas_defaults_to_pc_and_count_10(void) {
   write_word_at(0x1000, 0x13); /* nop */
   prog.pc = 0x1000;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   disas_target_dbg = &dbg;
   disas_target_argc = 0;
 
@@ -430,7 +431,7 @@ void test_cmd_disas_defaults_to_pc_and_count_10(void) {
 
 void test_cmd_disas_explicit_address_and_count(void) {
   write_word_at(0x2000, 0x13);
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   disas_target_dbg = &dbg;
   static char addr[] = "0x2000";
   static char count[] = "1";
@@ -444,7 +445,7 @@ void test_cmd_disas_explicit_address_and_count(void) {
 }
 
 void test_cmd_disas_invalid_symbol_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   char addr[] = "not_a_symbol";
   char* argv[] = {addr};
   TEST_ASSERT_EQUAL_INT(CMD_ERROR, cmd_disas(&dbg, 1, argv));
@@ -458,7 +459,7 @@ void test_cmd_step_executes_and_returns_ok(void) {
   write_word_at(0x1000, 0x13); /* nop */
   prog.pc = 0x1000;
   prog.status = CPU_RUNNING;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
 
   TEST_ASSERT_EQUAL_INT(CMD_OK, cmd_step(&dbg, 0, NULL));
 }
@@ -466,7 +467,7 @@ void test_cmd_step_executes_and_returns_ok(void) {
 void test_cmd_step_fault_returns_error(void) {
   prog.pc = 0x1000; /* unmapped */
   prog.status = CPU_RUNNING;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
 
   TEST_ASSERT_EQUAL_INT(CMD_ERROR, cmd_step(&dbg, 0, NULL));
 }
@@ -476,14 +477,24 @@ void test_cmd_continue_runs_to_exit(void) {
   prog.registers[17] = 10;     /* exit */
   prog.pc = 0x1000;
   prog.status = CPU_RUNNING;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
 
   TEST_ASSERT_EQUAL_INT(CMD_OK, cmd_continue(&dbg, 0, NULL));
   TEST_ASSERT_EQUAL(CPU_EXITED, prog.status);
 }
 
 void test_cmd_run_resets_and_reports_ok_even_on_fault(void) {
-  AssembledProgram source = {0};
+  static const uint8_t fault_word[4] = {0}; /* 0x00000000 is not a valid instruction, so
+                                                execution faults immediately after reset */
+  Elf32Image source = {0};
+  source.entry = 0x1000;
+  source.nsegments = 1;
+  source.segments[0].vaddr = 0x1000;
+  source.segments[0].filesz = sizeof fault_word;
+  source.segments[0].memsz = sizeof fault_word;
+  source.segments[0].flags = PF_R | PF_X;
+  source.segments[0].data = fault_word;
+
   ProgramState* initial = calloc(1, sizeof(ProgramState));
   debugger_init(&dbg, initial, &source, NULL);
 
@@ -514,19 +525,19 @@ void test_cmd_help_lists_all_commands(void) {
  * ------------------------------------------------------------------- */
 
 void test_debugger_cli_quit_exits_cleanly(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   const char* out = run_cli_with_input(&dbg, "quit\n");
   TEST_ASSERT_NOT_NULL(strstr(out, "(dbg) "));
 }
 
 void test_debugger_cli_eof_breaks_loop(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   const char* out = run_cli_with_input(&dbg, "");
   TEST_ASSERT_NOT_NULL(strstr(out, "(dbg) "));
 }
 
 void test_debugger_cli_blank_line_repeats_last_command(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   const char* out = run_cli_with_input(&dbg, "help\n\nquit\n");
 
   /* "help" prints "Execute one instruction" (from the step command's
@@ -542,7 +553,7 @@ void test_debugger_cli_blank_line_repeats_last_command(void) {
 }
 
 void test_debugger_cli_unknown_command_reports_error(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   const char* out = run_cli_with_input(&dbg, "bogus\nquit\n");
   TEST_ASSERT_NOT_NULL(strstr(out, "Unknown command"));
 }

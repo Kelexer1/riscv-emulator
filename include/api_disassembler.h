@@ -2,7 +2,7 @@
 #define API_DISASSEMBLER_H
 
 #include "binary_to_instruction.h"
-#include "first_pass.h"
+#include "symbol_table.h"
 
 /**
  * @brief Formats a decoded instruction into a human-readable disassembly string

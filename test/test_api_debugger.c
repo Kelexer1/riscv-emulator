@@ -60,20 +60,20 @@ static const char* capture_stdout(void (*fn)(void)) {
 
 void test_debugger_init_null_args_no_crash(void) {
   debugger_init(NULL, &prog, NULL, NULL);
-  AssembledProgram source = {0};
+  Elf32Image source = {0};
   debugger_init(&dbg, NULL, &source, NULL);
   TEST_PASS();
 }
 
 void test_debugger_init_sets_fields(void) {
-  AssembledProgram source = {0};
+  Elf32Image source = {0};
   SymbolTable table = {0};
   dbg.is_paused = 1; /* should be reset by memset inside debugger_init */
 
   debugger_init(&dbg, &prog, &source, &table);
 
   TEST_ASSERT_EQUAL_PTR(&prog, dbg.prog);
-  TEST_ASSERT_EQUAL_PTR(&source, dbg.prog_source);
+  TEST_ASSERT_EQUAL_PTR(&source, dbg.image);
   TEST_ASSERT_EQUAL_PTR(&table, dbg.symbol_table);
   TEST_ASSERT_EQUAL_INT(0, dbg.is_paused);
 }
@@ -92,12 +92,12 @@ void test_debugger_find_breakpoint_null_dbg_should_return_not_found(void) {
 }
 
 void test_debugger_find_breakpoint_not_set_returns_negative_one(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   TEST_ASSERT_EQUAL_INT(-1, debugger_find_breakpoint(&dbg, 0x1000));
 }
 
 void test_debugger_add_and_find_breakpoint(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
 
   TEST_ASSERT_EQUAL_INT(1, debugger_add_breakpoint(&dbg, 0x1000));
   int idx = debugger_find_breakpoint(&dbg, 0x1000);
@@ -107,7 +107,7 @@ void test_debugger_add_and_find_breakpoint(void) {
 }
 
 void test_debugger_add_breakpoint_duplicate_is_idempotent(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_breakpoint(&dbg, 0x1000);
   debugger_add_breakpoint(&dbg, 0x1000);
 
@@ -119,7 +119,7 @@ void test_debugger_add_breakpoint_duplicate_is_idempotent(void) {
 }
 
 void test_debugger_add_breakpoint_table_full_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   for (int i = 0; i < MAX_BREAKPOINTS; i++)
     TEST_ASSERT_EQUAL_INT(1, debugger_add_breakpoint(&dbg, 0x1000 + i * 4));
 
@@ -135,7 +135,7 @@ void test_debugger_add_breakpoint_symbol_resolves(void) {
   SymbolTable table = {0};
   table.head = &sym;
 
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, &table);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, &table);
 
   TEST_ASSERT_EQUAL_INT(1, debugger_add_breakpoint_symbol(&dbg, "loop", 4));
   TEST_ASSERT_TRUE(debugger_find_breakpoint(&dbg, 0x2000) >= 0);
@@ -144,18 +144,18 @@ void test_debugger_add_breakpoint_symbol_resolves(void) {
 void test_debugger_add_breakpoint_symbol_unresolved_fails(void) {
   SymbolTable table = {0};
   table.head = NULL;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, &table);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, &table);
 
   TEST_ASSERT_EQUAL_INT(0, debugger_add_breakpoint_symbol(&dbg, "missing", 7));
 }
 
 void test_debugger_add_breakpoint_symbol_no_table_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   TEST_ASSERT_EQUAL_INT(0, debugger_add_breakpoint_symbol(&dbg, "loop", 4));
 }
 
 void test_debugger_remove_breakpoint(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_breakpoint(&dbg, 0x1000);
 
   debugger_remove_breakpoint(&dbg, 0x1000);
@@ -164,13 +164,13 @@ void test_debugger_remove_breakpoint(void) {
 }
 
 void test_debugger_remove_breakpoint_not_found_no_crash(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_remove_breakpoint(&dbg, 0x9999);
   TEST_PASS();
 }
 
 void test_debugger_toggle_breakpoint(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_breakpoint(&dbg, 0x1000);
 
   TEST_ASSERT_EQUAL_INT(1, debugger_toggle_breakpoint(&dbg, 0x1000, 0));
@@ -179,7 +179,7 @@ void test_debugger_toggle_breakpoint(void) {
 }
 
 void test_debugger_toggle_breakpoint_not_found_fails(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   TEST_ASSERT_EQUAL_INT(0, debugger_toggle_breakpoint(&dbg, 0x1000, 0));
 }
 
@@ -193,7 +193,7 @@ void test_debugger_find_watchpoint_null_dbg_should_return_not_found(void) {
 
 void test_debugger_add_watchpoint_mapped_returns_one(void) {
   mem_write_u32(&prog.pt, 0x1000, 42, MEMORY_READ | MEMORY_WRITE);
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
 
   int result = debugger_add_watchpoint(&dbg, 0x1000);
 
@@ -204,7 +204,7 @@ void test_debugger_add_watchpoint_mapped_returns_one(void) {
 }
 
 void test_debugger_add_watchpoint_unmapped_returns_two(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
 
   int result = debugger_add_watchpoint(&dbg, 0x9000); /* never mapped */
 
@@ -213,7 +213,7 @@ void test_debugger_add_watchpoint_unmapped_returns_two(void) {
 }
 
 void test_debugger_add_watchpoint_duplicate_is_idempotent(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_watchpoint(&dbg, 0x1000);
   debugger_add_watchpoint(&dbg, 0x1000);
 
@@ -225,7 +225,7 @@ void test_debugger_add_watchpoint_duplicate_is_idempotent(void) {
 }
 
 void test_debugger_remove_watchpoint(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_watchpoint(&dbg, 0x1000);
 
   debugger_remove_watchpoint(&dbg, 0x1000);
@@ -234,7 +234,7 @@ void test_debugger_remove_watchpoint(void) {
 }
 
 void test_debugger_toggle_watchpoint(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_watchpoint(&dbg, 0x1000);
 
   TEST_ASSERT_EQUAL_INT(1, debugger_toggle_watchpoint(&dbg, 0x1000, 0));
@@ -248,7 +248,7 @@ void test_debugger_toggle_watchpoint(void) {
 
 void test_check_watchpoints_no_change_returns_zero(void) {
   mem_write_u32(&prog.pt, 0x1000, 42, MEMORY_READ | MEMORY_WRITE);
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_watchpoint(&dbg, 0x1000);
 
   TEST_ASSERT_EQUAL_INT(0, check_watchpoints(&dbg));
@@ -256,7 +256,7 @@ void test_check_watchpoints_no_change_returns_zero(void) {
 
 void test_check_watchpoints_detects_change(void) {
   mem_write_u32(&prog.pt, 0x1000, 42, MEMORY_READ | MEMORY_WRITE);
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_watchpoint(&dbg, 0x1000);
 
   mem_write_u32(&prog.pt, 0x1000, 99, MEMORY_WRITE);
@@ -268,7 +268,7 @@ void test_check_watchpoints_detects_change(void) {
 
 void test_check_watchpoints_ignores_inactive(void) {
   mem_write_u32(&prog.pt, 0x1000, 42, MEMORY_READ | MEMORY_WRITE);
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_watchpoint(&dbg, 0x1000);
   debugger_toggle_watchpoint(&dbg, 0x1000, 0);
 
@@ -287,25 +287,25 @@ void test_classify_step_null_dbg_returns_fault(void) {
 }
 
 void test_classify_step_fault_status(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   StepResult r = {.status = STEP_HALTED_FETCH};
   TEST_ASSERT_EQUAL(STOP_FAULT, classify_step(&dbg, r));
 }
 
 void test_classify_step_exited_status(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   StepResult r = {.status = STEP_EXITED};
   TEST_ASSERT_EQUAL(STOP_EXITED, classify_step(&dbg, r));
 }
 
 void test_classify_step_ebreak_status(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   StepResult r = {.status = STEP_EBREAK};
   TEST_ASSERT_EQUAL(STOP_EBREAK, classify_step(&dbg, r));
 }
 
 void test_classify_step_ok_status_stores_last_step(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   StepResult r = {.status = STEP_OK, .pc_old = 4, .pc_new = 8};
 
   TEST_ASSERT_EQUAL(STOP_STEP, classify_step(&dbg, r));
@@ -324,7 +324,7 @@ void test_debugger_step_executes_single_instruction(void) {
   write_word_at(0x1000, addi);
   prog.pc = 0x1000;
   prog.status = CPU_RUNNING;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
 
   DebugStopReason reason = debugger_step(&dbg);
 
@@ -343,7 +343,7 @@ void test_debugger_step_triggers_watchpoint(void) {
   prog.pc = 0x1000;
   prog.status = CPU_RUNNING;
 
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_watchpoint(&dbg, 0x2000);
 
   DebugStopReason reason = debugger_step(&dbg);
@@ -361,7 +361,7 @@ void test_debugger_continue_stops_at_breakpoint(void) {
   prog.pc = 0x1000;
   prog.status = CPU_RUNNING;
 
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_breakpoint(&dbg, 0x1004);
 
   DebugStopReason reason = debugger_continue(&dbg);
@@ -379,7 +379,7 @@ void test_debugger_continue_steps_over_breakpoint_at_current_pc(void) {
   prog.pc = 0x1000;
   prog.status = CPU_RUNNING;
 
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_breakpoint(&dbg, 0x1000); /* breakpoint at the starting pc */
 
   DebugStopReason reason = debugger_continue(&dbg);
@@ -396,7 +396,7 @@ void test_debugger_continue_runs_to_exit(void) {
   prog.pc = 0x1000;
   prog.status = CPU_RUNNING;
 
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
 
   TEST_ASSERT_EQUAL(STOP_EXITED, debugger_continue(&dbg));
 }
@@ -404,7 +404,7 @@ void test_debugger_continue_runs_to_exit(void) {
 void test_debugger_continue_runs_to_fault(void) {
   prog.pc = 0x1000; /* unmapped */
   prog.status = CPU_RUNNING;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
 
   TEST_ASSERT_EQUAL(STOP_FAULT, debugger_continue(&dbg));
 }
@@ -446,7 +446,7 @@ void test_debugger_print_register_masked_output(void) {
   prog.registers[0] = 111;
   prog.registers[1] = 222;
   prog.registers[2] = 333; /* not in mask 0x3 (bits 0,1) */
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   print_target_dbg = &dbg;
 
   const char* out = capture_stdout(call_print_register);
@@ -467,7 +467,7 @@ static void call_print_memory_invalid_count(void) { debugger_print_memory(print_
 
 void test_debugger_print_memory_invalid_count_no_output(void) {
   mem_write_u32(&prog.pt, 0x1000, 777, MEMORY_READ | MEMORY_WRITE);
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   print_target_dbg = &dbg;
 
   /* count=3 is not one of the accepted values {1, 2, 4}, so the function
@@ -478,7 +478,7 @@ void test_debugger_print_memory_invalid_count_no_output(void) {
 
 void test_debugger_print_memory_readable(void) {
   mem_write_u32(&prog.pt, 0x1000, 777, MEMORY_READ | MEMORY_WRITE);
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   print_target_dbg = &dbg;
 
   const char* out = capture_stdout(call_print_memory);
@@ -490,7 +490,7 @@ void test_debugger_print_memory_readable(void) {
 static void call_print_memory_unreadable(void) { debugger_print_memory(print_target_dbg, 0x9000, 1, 4, FORMAT_DEC); }
 
 void test_debugger_print_memory_unreadable_marks_unreadable(void) {
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   print_target_dbg = &dbg;
 
   const char* out = capture_stdout(call_print_memory_unreadable);
@@ -513,7 +513,7 @@ void test_debugger_print_disas_valid_instruction(void) {
   uint32_t addi = (5u << 20) | (0u << 15) | (0u << 12) | (1u << 7) | 0x13u; /* addi x1, x0, 5 */
   write_word_at(0x1000, addi);
   prog.pc = 0x1000;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   print_target_dbg = &dbg;
 
   const char* out = capture_stdout(call_print_disas);
@@ -526,7 +526,7 @@ void test_debugger_print_disas_marks_breakpoint(void) {
   uint32_t addi = (5u << 20) | (0u << 15) | (0u << 12) | (1u << 7) | 0x13u;
   write_word_at(0x1000, addi);
   prog.pc = 0x2000; /* not at this address, so no pc marker */
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   debugger_add_breakpoint(&dbg, 0x1000);
   print_target_dbg = &dbg;
 
@@ -537,7 +537,7 @@ void test_debugger_print_disas_marks_breakpoint(void) {
 
 void test_debugger_print_disas_unreadable_memory(void) {
   prog.pc = 0x9999;
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   print_target_dbg = &dbg;
 
   const char* out = capture_stdout(call_print_disas);
@@ -547,7 +547,7 @@ void test_debugger_print_disas_unreadable_memory(void) {
 
 void test_debugger_print_disas_invalid_instruction(void) {
   write_word_at(0x1000, 0x7F); /* reserved/undecodable opcode byte */
-  debugger_init(&dbg, &prog, &(AssembledProgram){0}, NULL);
+  debugger_init(&dbg, &prog, &(Elf32Image){0}, NULL);
   print_target_dbg = &dbg;
 
   const char* out = capture_stdout(call_print_disas);
