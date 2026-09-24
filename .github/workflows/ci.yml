@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+      - name: Configure
+        run: cmake -S . -B build/test -G Ninja -DCMAKE_BUILD_TYPE=Test
+      - name: Build
+        run: cmake --build build/test
+      - name: Relax ASLR for AddressSanitizer
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+      - name: Run unit tests
+        run: ctest --test-dir build/test --output-on-failure
+
+  riscv-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: riscv-software-src/riscv-tests
+          path: riscv-tests
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build gcc-riscv64-unknown-elf binutils-riscv64-unknown-elf
+      - name: Build emulator
+        run: |
+          cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/release
+      - name: Run riscv-tests
+        run: |
+          python3 test/riscv-tests/run_riscv_tests.py \
+            --riscv-tests riscv-tests \
+            --emulator build/release/riscv-emulator \
+            --emulator-only --timeout 20 --work-dir "$RUNNER_TEMP/rvt"
+      - name: Upload work directory
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: riscv-tests-work
+          path: ${{ runner.temp }}/rvt
