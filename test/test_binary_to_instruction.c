@@ -232,6 +232,9 @@ int main(void) {
   RUN_TEST(test_binary_to_instruction_reserved_opcode_fails);
   RUN_TEST(test_binary_to_instruction_invalid_funct7_for_add_fails);
   RUN_TEST(test_binary_to_instruction_all_zero_word_should_be_rejected);
+  RUN_TEST(test_decode_fence_i);
+  RUN_TEST(test_decode_fence);
+  RUN_TEST(test_decode_misc_mem_reserved_funct3);
 
   return UNITY_END();
 }
