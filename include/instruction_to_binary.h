@@ -87,6 +87,9 @@ static const OpcodeEncoding OPCODE_TABLE[] = {
     // System
     [OP_ECALL] = {0x73, 0x0, 0x00},
     [OP_EBREAK] = {0x73, 0x0, 0x00},
+
+    [OP_FENCE] = {0x0F, 0x0, 0x00},
+    [OP_FENCE_I] = {0x0F, 0x1, 0x00},
 };
 
 /**

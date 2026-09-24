@@ -73,6 +73,8 @@ InstructionFormat get_format(Opcode op) {
 
   case OP_ECALL:
   case OP_EBREAK:
+  case OP_FENCE:
+  case OP_FENCE_I:
     return FORMAT_SYSTEM;
   default:
     return FORMAT_UNKNOWN;

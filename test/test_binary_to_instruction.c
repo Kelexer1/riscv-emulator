@@ -191,6 +191,23 @@ void test_binary_to_instruction_all_zero_word_should_be_rejected(void) {
   TEST_ASSERT_EQUAL_INT(0, binary_to_instruction(0x00000000, &out));
 }
 
+void test_decode_fence_i(void) {
+  DecodedInstruction d;
+  TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(0x0000100F, &d));
+  TEST_ASSERT_EQUAL_INT(OP_FENCE_I, d.op);
+}
+
+void test_decode_fence(void) {
+  DecodedInstruction d;
+  TEST_ASSERT_EQUAL_INT(1, binary_to_instruction(0x0FF0000F, &d));
+  TEST_ASSERT_EQUAL_INT(OP_FENCE, d.op);
+}
+
+void test_decode_misc_mem_reserved_funct3(void) {
+  DecodedInstruction d;
+  TEST_ASSERT_EQUAL_INT(0, binary_to_instruction(0x0000200F, &d));
+}
+
 /* ---------------------------------------------------------------------
  * main
  * ------------------------------------------------------------------- */

@@ -170,6 +170,19 @@ int binary_to_instruction(uint32_t bin, DecodedInstruction* out) {
     return 1;
   }
 
+  if (opcode_bin == 0x0F) {
+    uint8_t misc_funct3 = (bin >> 12) & 0x7;
+    if (misc_funct3 == 0) {
+      *out = (DecodedInstruction){.op = OP_FENCE, .imm = (int32_t)(bin >> 20)};
+      return 1;
+    }
+    if (misc_funct3 == 1) {
+      *out = (DecodedInstruction){.op = OP_FENCE_I};
+      return 1;
+    }
+    return 0;
+  }
+
   uint8_t funct3_bin = (bin >> 12) & 0x7;
   uint8_t funct7_bin = (bin >> 25) & 0x7F;
 

@@ -56,6 +56,8 @@ typedef enum : uint8_t {
   OP_AUIPC,
   OP_ECALL,
   OP_EBREAK,
+  OP_FENCE,
+  OP_FENCE_I
 } Opcode;
 
 /**

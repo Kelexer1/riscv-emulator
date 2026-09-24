@@ -38,21 +38,21 @@ typedef struct {
  * corresponding Opcode enum values
  */
 static const MnemonicMap MNEMONICS[] = {
-    {"add", OP_ADD},     {"sub", OP_SUB},       {"and", OP_AND},     {"or", OP_OR},         {"xor", OP_XOR},
-    {"slt", OP_SLT},     {"sltu", OP_SLTU},     {"sll", OP_SLL},     {"srl", OP_SRL},       {"sra", OP_SRA},
+    {"add", OP_ADD},     {"sub", OP_SUB},         {"and", OP_AND},     {"or", OP_OR},         {"xor", OP_XOR},
+    {"slt", OP_SLT},     {"sltu", OP_SLTU},       {"sll", OP_SLL},     {"srl", OP_SRL},       {"sra", OP_SRA},
 
-    {"mul", OP_MUL},     {"mulh", OP_MULH},     {"mulhu", OP_MULHU}, {"mulhsu", OP_MULHSU},
+    {"mul", OP_MUL},     {"mulh", OP_MULH},       {"mulhu", OP_MULHU}, {"mulhsu", OP_MULHSU},
 
-    {"div", OP_DIV},     {"divu", OP_DIVU},     {"rem", OP_REM},     {"remu", OP_REMU},
+    {"div", OP_DIV},     {"divu", OP_DIVU},       {"rem", OP_REM},     {"remu", OP_REMU},
 
-    {"addi", OP_ADDI},   {"andi", OP_ANDI},     {"ori", OP_ORI},     {"xori", OP_XORI},     {"slti", OP_SLTI},
-    {"sltiu", OP_SLTIU}, {"slli", OP_SLLI},     {"srli", OP_SRLI},   {"srai", OP_SRAI},
+    {"addi", OP_ADDI},   {"andi", OP_ANDI},       {"ori", OP_ORI},     {"xori", OP_XORI},     {"slti", OP_SLTI},
+    {"sltiu", OP_SLTIU}, {"slli", OP_SLLI},       {"srli", OP_SRLI},   {"srai", OP_SRAI},
 
-    {"lb", OP_LB},       {"lh", OP_LH},         {"lw", OP_LW},       {"lbu", OP_LBU},       {"lhu", OP_LHU},
+    {"lb", OP_LB},       {"lh", OP_LH},           {"lw", OP_LW},       {"lbu", OP_LBU},       {"lhu", OP_LHU},
 
-    {"sb", OP_SB},       {"sh", OP_SH},         {"sw", OP_SW},
+    {"sb", OP_SB},       {"sh", OP_SH},           {"sw", OP_SW},
 
-    {"beq", OP_BEQ},     {"bne", OP_BNE},       {"blt", OP_BLT},     {"bge", OP_BGE},       {"bltu", OP_BLTU},
+    {"beq", OP_BEQ},     {"bne", OP_BNE},         {"blt", OP_BLT},     {"bge", OP_BGE},       {"bltu", OP_BLTU},
     {"bgeu", OP_BGEU},
 
     {"jal", OP_JAL},
@@ -62,6 +62,8 @@ static const MnemonicMap MNEMONICS[] = {
     {"lui", OP_LUI},     {"auipc", OP_AUIPC},
 
     {"ecall", OP_ECALL}, {"ebreak", OP_EBREAK},
+
+    {"fence", OP_FENCE}, {"fence.i", OP_FENCE_I},
 };
 
 /**

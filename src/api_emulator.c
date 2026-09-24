@@ -530,6 +530,11 @@ static ExecResult handle_instruction(ProgramState* prog, DecodedInstruction* ins
     return EXEC_EBREAK;
   }
 
+  case OP_FENCE: // nops
+  case OP_FENCE_I: {
+    return EXEC_OK;
+  }
+
   default: {
     return EXEC_INVALID_OP;
   }
